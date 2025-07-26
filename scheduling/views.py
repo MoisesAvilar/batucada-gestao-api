@@ -1,8 +1,8 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Modalidade, Aluno, Aula, PresencaAluno, PresencaProfessor
-from .serializers import ModalidadeSerializer, AlunoSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer
+from .models import Modalidade, Aluno, Aula, PresencaAluno, PresencaProfessor, RelatorioAula
+from .serializers import ModalidadeSerializer, AlunoSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer, RelatorioAulaSerializer
 
 
 class ModalidadeViewSet(viewsets.ModelViewSet):
@@ -47,21 +47,18 @@ class AulaViewSet(viewsets.ModelViewSet):
             aluno_id = item['aluno_id']
             status_presenca = item['status']
 
-            # Garante que o aluno pertence à aula antes de marcar a presença
             if not aula.alunos.filter(id=aluno_id).exists():
                 return Response(
                     {'error': f'O aluno com ID {aluno_id} não está nesta aula.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Cria ou atualiza o registro de presença
             PresencaAluno.objects.update_or_create(
                 aula=aula,
                 aluno_id=aluno_id,
                 defaults={'status': status_presenca}
             )
 
-        # Atualiza o status da aula principal se necessário
         if not PresencaAluno.objects.filter(aula=aula, status='presente').exists():
             aula.status = 'Aluno Ausente'
         else:
@@ -86,23 +83,35 @@ class AulaViewSet(viewsets.ModelViewSet):
             professor_id = item['professor_id']
             status_presenca = item['status']
             
-            # Garante que o professor pertence à aula antes de marcar a presença
             if not aula.professores.filter(id=professor_id).exists():
                 return Response(
                     {'error': f'O professor com ID {professor_id} não está nesta aula.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Cria ou atualiza o registro de presença
             PresencaProfessor.objects.update_or_create(
                 aula=aula,
                 professor_id=professor_id,
                 defaults={'status': status_presenca}
             )
-        
-        # Para ACs, a aula é considerada 'Realizada' se pelo menos um professor esteve presente.
+
         if PresencaProfessor.objects.filter(aula=aula, status='presente').exists():
             aula.status = 'Realizada'
             aula.save()
 
         return Response({'status': 'presença de professores atualizada com sucesso'}, status=status.HTTP_200_OK)
+
+
+class RelatorioAulaViewSet(viewsets.ModelViewSet):
+    """
+    Endpoint da API para criar e visualizar relatórios de aulas.
+    """
+    queryset = RelatorioAula.objects.all()
+    serializer_class = RelatorioAulaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        """
+        Define o professor que validou como o usuário logado no momento da criação.
+        """
+        serializer.save(professor_que_validou=self.request.user)

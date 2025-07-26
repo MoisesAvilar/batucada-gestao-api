@@ -3,7 +3,7 @@ import pytest
 from rest_framework import status
 from django.urls import reverse
 from users.models import CustomUser
-from .models import Aluno, Aula, Modalidade, PresencaAluno, PresencaProfessor
+from .models import Aluno, Aula, Modalidade, PresencaAluno, PresencaProfessor, RelatorioAula, ItemRudimento
 
 
 # O marcador garante que o banco de dados de teste seja usado.
@@ -166,3 +166,48 @@ def test_marcar_presenca_professores_em_ac(client):
     assert PresencaProfessor.objects.get(professor=prof1).status == 'presente'
     aula_ac.refresh_from_db()
     assert aula_ac.status == 'Realizada'
+
+
+@pytest.mark.django_db
+def test_create_relatorio_with_nested_items(client):
+    """
+    Testa a criação de um RelatorioAula com itens aninhados (rudimentos, etc.).
+    """
+    # 1. PREPARAÇÃO
+    # Cria um professor, uma modalidade, um aluno e uma aula
+    professor = CustomUser.objects.create_user(username='prof_relatorio', password='password123', tipo='professor')
+    token_url = reverse('users:token_obtain_pair')
+    token_response = client.post(token_url, {'username': 'prof_relatorio', 'password': 'password123'})
+    token = token_response.data['access']
+    modalidade = Modalidade.objects.create(nome="Aula com Relatório")
+    aluno = Aluno.objects.create(nome_completo="Aluno para Relatório")
+    aula = Aula.objects.create(modalidade=modalidade, data_hora="2025-08-20T10:00:00Z")
+    aula.alunos.set([aluno])
+    aula.professores.set([professor])
+    url = reverse('relatorio-list')
+    payload = {
+        "aula": aula.pk,
+        "conteudo_teorico": "Escalas Maiores",
+        "itens_rudimentos": [{"descricao": "Toque Simples", "bpm": "120", "observacoes": "Manter consistência"}],
+        "itens_ritmo": [{"descricao": "Groove de Rock Básico", "livro_metodo": "Página 10", "bpm": "100"}],
+        "itens_viradas": []
+    }
+    
+    # --- AÇÃO (Act) - LINHA CORRIGIDA ---
+    # Usamos json.dumps e content_type, removendo format='json'
+    response = client.post(
+        url,
+        data=json.dumps(payload),
+        content_type='application/json',
+        HTTP_AUTHORIZATION=f'Bearer {token}'
+    )
+
+    # --- VERIFICAÇÃO (Assert) ---
+    assert response.status_code == status.HTTP_201_CREATED
+    assert RelatorioAula.objects.count() == 1
+    relatorio = RelatorioAula.objects.first()
+    assert relatorio.professor_que_validou == professor
+    assert relatorio.itens_rudimentos.count() == 1
+    assert relatorio.itens_ritmo.count() == 1
+    assert relatorio.itens_viradas.count() == 0
+    assert relatorio.itens_rudimentos.first().descricao == "Toque Simples"

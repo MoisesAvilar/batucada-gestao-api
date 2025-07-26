@@ -100,3 +100,59 @@ class PresencaProfessor(models.Model):
 
     def __str__(self):
         return f"{self.professor.username} - {self.get_status_display()} em {self.aula}"
+
+
+class RelatorioAula(models.Model):
+    aula = models.OneToOneField(Aula, on_delete=models.CASCADE, related_name="relatorio")
+    conteudo_teorico = models.TextField(verbose_name="Conteúdo Teórico Abordado", blank=True, null=True)
+    observacoes_teoria = models.TextField(verbose_name="Observações sobre a Teoria", blank=True, null=True)
+    repertorio_musicas = models.TextField(verbose_name="Músicas do Repertório", blank=True, null=True)
+    observacoes_repertorio = models.TextField(verbose_name="Observações sobre o Repertório", blank=True, null=True)
+    observacoes_gerais = models.TextField(verbose_name="Observações Gerais sobre a Aula", blank=True, null=True)
+    professor_que_validou = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={"tipo__in": ["admin", "professor"]},
+        related_name="relatorios_validados"
+    )
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Relatório da aula de {self.aula.data_hora.strftime('%d/%m/%Y')}"
+
+
+class ItemRudimento(models.Model):
+    relatorio = models.ForeignKey(RelatorioAula, related_name='itens_rudimentos', on_delete=models.CASCADE)
+    descricao = models.CharField(max_length=255, verbose_name="Exercício")
+    bpm = models.CharField(max_length=50, blank=True, null=True, verbose_name="BPM")
+    duracao_min = models.IntegerField(verbose_name="Duração (min)", null=True, blank=True)
+    observacoes = models.TextField(verbose_name="Observações", blank=True, null=True)
+
+    def __str__(self):
+        return f"Rudimento: {self.descricao}"
+
+
+class ItemRitmo(models.Model):
+    relatorio = models.ForeignKey(RelatorioAula, related_name='itens_ritmo', on_delete=models.CASCADE)
+    descricao = models.CharField(max_length=255, verbose_name="Exercício")
+    livro_metodo = models.CharField(max_length=200, blank=True, null=True, verbose_name="Livro/Método")
+    bpm = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clique/BPM")
+    duracao_min = models.IntegerField(verbose_name="Duração (min)", null=True, blank=True)
+    observacoes = models.TextField(verbose_name="Observações", blank=True, null=True)
+
+    def __str__(self):
+        return f"Ritmo: {self.descricao}"
+
+
+class ItemVirada(models.Model):
+    relatorio = models.ForeignKey(RelatorioAula, related_name='itens_viradas', on_delete=models.CASCADE)
+    descricao = models.CharField(max_length=255, verbose_name="Exercício")
+    bpm = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clique/BPM")
+    duracao_min = models.IntegerField(verbose_name="Duração (min)", null=True, blank=True)
+    observacoes = models.TextField(verbose_name="Observações", blank=True, null=True)
+
+    def __str__(self):
+        return f"Virada: {self.descricao}"
