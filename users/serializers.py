@@ -1,5 +1,7 @@
 from rest_framework import serializers
+from django.db.models import Count, Q
 from .models import CustomUser
+from scheduling.models import Aula, PresencaProfessor
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import RegexValidator
 
@@ -59,3 +61,66 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'tipo', 'profile_picture_url')
+
+
+class ProfessorDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer detalhado para um único professor, calculando seus KPIs de performance.
+    """
+    kpis = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'tipo',
+            'profile_picture_url', 'kpis'
+        ]
+
+    def get_kpis(self, professor):
+        """
+        Calcula os KPIs de performance baseados nas aulas do professor.
+        Lê os filtros de data a partir dos parâmetros da URL.
+        """
+        request = self.context.get('request')
+        data_inicial_str = request.query_params.get('data_inicial')
+        data_final_str = request.query_params.get('data_final')
+
+        aulas_relacionadas = Aula.objects.filter(
+            Q(professores=professor) | Q(relatorio__professor_que_validou=professor)
+        ).distinct()
+
+        # Aplica filtros de data, se existirem
+        if data_inicial_str:
+            aulas_relacionadas = aulas_relacionadas.filter(data_hora__date__gte=data_inicial_str)
+        if data_final_str:
+            aulas_relacionadas = aulas_relacionadas.filter(data_hora__date__lte=data_final_str)
+
+        # Contagem de aulas normais que ele validou
+        realizadas_normal = aulas_relacionadas.filter(
+            status__in=['Realizada', 'Aluno Ausente'],
+            relatorio__professor_que_validou=professor
+        ).exclude(modalidade__nome__icontains="atividade complementar").count()
+
+        realizadas_ac = aulas_relacionadas.filter(
+            status='Realizada',
+            modalidade__nome__icontains="atividade complementar",
+            presencas_professores__professor=professor,
+            presencas_professores__status='presente'
+        ).count()
+        
+        # Lógica de substituição
+        total_substituicoes_feitas = aulas_relacionadas.filter(
+            status='Realizada', relatorio__professor_que_validou=professor
+        ).exclude(professores=professor).count()
+
+        total_substituicoes_sofridas = aulas_relacionadas.filter(
+            status='Realizada', professores=professor
+        ).exclude(relatorio__professor_que_validou=professor).count()
+
+        return {
+            'total_realizadas': realizadas_normal + realizadas_ac,
+            'total_agendadas': aulas_relacionadas.filter(status='Agendada', professores=professor).count(),
+            'total_canceladas': aulas_relacionadas.filter(status='Cancelada', professores=professor).count(),
+            'total_substituicoes_feitas': total_substituicoes_feitas,
+            'total_substituicoes_sofridas': total_substituicoes_sofridas,
+        }

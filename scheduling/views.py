@@ -21,7 +21,7 @@ class AlunoViewSet(viewsets.ModelViewSet):
     """
     queryset = Aluno.objects.all().order_by('nome_completo')
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return AlunoDetailSerializer
@@ -87,7 +87,7 @@ class AulaViewSet(viewsets.ModelViewSet):
         for item in serializer.validated_data:
             professor_id = item['professor_id']
             status_presenca = item['status']
-            
+
             if not aula.professores.filter(id=professor_id).exists():
                 return Response(
                     {'error': f'O professor com ID {professor_id} não está nesta aula.'},
