@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -10,7 +11,7 @@ class Modalidade(models.Model):
 
     def __str__(self):
         return self.nome
-    
+
 
 class Aluno(models.Model):
     """
@@ -27,3 +28,75 @@ class Aluno(models.Model):
 
     def __str__(self):
         return self.nome_completo
+
+
+class Aula(models.Model):
+    STATUS_AULA_CHOICES = (
+        ("Agendada", "Agendada"),
+        ("Realizada", "Realizada"),
+        ("Cancelada", "Cancelada"),
+        ("Aluno Ausente", "Aluno Ausente"),
+    )
+
+    alunos = models.ManyToManyField(
+        "Aluno",
+        blank=True,
+        related_name="aulas"
+    )
+
+    professores = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        limit_choices_to={"tipo__in": ["admin", "professor"]},
+        related_name="aulas"
+    )
+
+    modalidade = models.ForeignKey(
+        Modalidade,
+        on_delete=models.PROTECT,
+        related_name="aulas"
+    )
+    data_hora = models.DateTimeField(verbose_name="Data e Horário")
+    status = models.CharField(
+        max_length=20, choices=STATUS_AULA_CHOICES, default="Agendada"
+    )
+
+    def __str__(self):
+        nomes_alunos = ", ".join([aluno.nome_completo for aluno in self.alunos.all()])
+        return f"{self.modalidade.nome} com {nomes_alunos or 'ninguém'} em {self.data_hora.strftime('%d/%m/%Y %H:%M')}"
+
+
+class PresencaAluno(models.Model):
+    STATUS_CHOICES = (
+        ('presente', 'Presente'),
+        ('ausente', 'Ausente'),
+    )
+    aula = models.ForeignKey(Aula, on_delete=models.CASCADE, related_name="presencas_alunos")
+    aluno = models.ForeignKey(Aluno, on_delete=models.CASCADE, related_name="presencas")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='presente')
+
+    class Meta:
+        unique_together = ('aula', 'aluno')
+
+    def __str__(self):
+        return f"{self.aluno.nome_completo} - {self.get_status_display()} em {self.aula}"
+
+
+class PresencaProfessor(models.Model):
+    STATUS_CHOICES = (
+        ('presente', 'Presente'),
+        ('ausente', 'Ausente'),
+    )
+    aula = models.ForeignKey(Aula, on_delete=models.CASCADE, related_name="presencas_professores")
+    professor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
+        related_name='presencas_registradas'
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='presente')
+
+    class Meta:
+        unique_together = ('aula', 'professor')
+
+    def __str__(self):
+        return f"{self.professor.username} - {self.get_status_display()} em {self.aula}"
