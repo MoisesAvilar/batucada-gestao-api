@@ -1,0 +1,16 @@
+# Inclui todas as dependências de produção
+-r requirements.txt
+
+# Ferramentas de Teste
+pytest
+pytest-django
+
+# Ferramentas de Desenvolvimento Django
+django-extensions
+Werkzeug
+pyOpenSSL
+
+# Ferramentas de Qualidade de Código (Sugestões)
+black   # Formatador de código automático e opinativo
+ruff    # Linter de código extremamente rápido e poderoso
+pre-commit # Automatiza a execução de hooks antes de cada commit
