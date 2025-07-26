@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'django_extensions',
 
     'users.apps.UsersConfig',
+    'reporting.apps.ReportingConfig',
     'scheduling.apps.SchedulingConfig',
 ]
 
