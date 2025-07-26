@@ -13,6 +13,8 @@ from .models import (
 )
 from users.models import CustomUser
 from django.db.models import Count, Q, Subquery, OuterRef
+from django.db.models.functions import TruncMonth
+from django.utils import timezone
 
 
 class ModalidadeSerializer(serializers.ModelSerializer):
@@ -152,3 +154,52 @@ class AlunoDetailSerializer(serializers.ModelSerializer):
 
         taxa = (kpis['total_realizadas'] / aulas_contabilizadas) * 100
         return round(taxa, 2)
+
+
+class ModalidadeDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer detalhado para uma única modalidade, calculando KPIs
+    e dados para gráficos.
+    """
+    kpis = serializers.SerializerMethodField()
+    monthly_activity_chart = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Modalidade
+        fields = ['id', 'nome', 'kpis', 'monthly_activity_chart']
+
+    def get_kpis(self, modalidade):
+        """Calcula os KPIs para a modalidade."""
+        aulas_da_modalidade = modalidade.aulas.all()
+        now = timezone.now()
+
+        total_aulas = aulas_da_modalidade.count()
+        total_realizadas = aulas_da_modalidade.filter(status="Realizada").count()
+
+        alunos_ativos_count = aulas_da_modalidade.filter(
+            data_hora__gte=now
+        ).values('alunos').distinct().count()
+
+        professores_count = aulas_da_modalidade.filter(
+            professores__isnull=False
+        ).values('professores').distinct().count()
+
+        return {
+            'total_aulas': total_aulas,
+            'total_realizadas': total_realizadas,
+            'alunos_ativos_count': alunos_ativos_count,
+            'professores_associados_count': professores_count,
+        }
+
+    def get_monthly_activity_chart(self, modalidade):
+        """Gera dados para o gráfico de atividade mensal."""
+        aulas_por_mes = modalidade.aulas.annotate(
+            mes=TruncMonth('data_hora')
+        ).values('mes').annotate(
+            contagem=Count('id')
+        ).order_by('mes')
+
+        return {
+            'labels': [item['mes'].strftime('%b/%Y') for item in aulas_por_mes],
+            'data': [item['contagem'] for item in aulas_por_mes],
+        }

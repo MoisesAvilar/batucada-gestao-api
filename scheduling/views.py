@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Modalidade, Aluno, Aula, PresencaAluno, PresencaProfessor, RelatorioAula
-from .serializers import ModalidadeSerializer, AlunoSerializer, AlunoDetailSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer, RelatorioAulaSerializer
+from .serializers import ModalidadeSerializer, AlunoSerializer, AlunoDetailSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer, RelatorioAulaSerializer, ModalidadeDetailSerializer
 
 
 class ModalidadeViewSet(viewsets.ModelViewSet):
@@ -10,8 +10,12 @@ class ModalidadeViewSet(viewsets.ModelViewSet):
     Endpoint da API que permite que modalidades sejam visualizadas ou editadas.
     """
     queryset = Modalidade.objects.all().order_by('nome')
-    serializer_class = ModalidadeSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return ModalidadeDetailSerializer
+        return ModalidadeSerializer
 
 
 class AlunoViewSet(viewsets.ModelViewSet):

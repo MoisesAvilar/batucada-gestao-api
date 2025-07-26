@@ -268,3 +268,44 @@ def test_aluno_detail_endpoint_returns_kpis(client):
     
     # Verifica a taxa de presença (2 presentes de 3 aulas concluídas [2p + 1a])
     assert response.data['taxa_presenca'] == 66.67 
+
+
+@pytest.mark.django_db
+def test_modalidade_detail_endpoint_returns_kpis(client):
+    """
+    Testa se o endpoint de detalhe da modalidade retorna os KPIs corretos.
+    """
+    # 1. ARRANGE
+    user = CustomUser.objects.create_user(username='testuser', password='password123')
+    token_url = reverse('users:token_obtain_pair')
+    token_response = client.post(token_url, {'username': 'testuser', 'password': 'password123'})
+    token = token_response.data['access']
+
+    modalidade = Modalidade.objects.create(nome="Bateria Avançado")
+    aluno1 = Aluno.objects.create(nome_completo="Aluno Ativo 1")
+    prof1 = CustomUser.objects.create_user(username='prof1', password='password123', tipo='professor')
+
+    # Cenário de aulas
+    # Aula realizada no passado
+    aula_passada = Aula.objects.create(
+        modalidade=modalidade, data_hora="2025-01-01T10:00:00Z", status="Realizada"
+    )
+    # Aula agendada para o futuro com um aluno
+    aula_futura = Aula.objects.create(
+        modalidade=modalidade, data_hora="2026-01-01T10:00:00Z", status="Agendada"
+    )
+    aula_futura.alunos.set([aluno1])
+    aula_futura.professores.set([prof1])
+
+    # 2. ACT
+    url = reverse('modalidade-detail', kwargs={'pk': modalidade.pk})
+    response = client.get(url, HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    # 3. ASSERT
+    assert response.status_code == status.HTTP_200_OK
+
+    kpis = response.data['kpis']
+    assert kpis['total_aulas'] == 2
+    assert kpis['total_realizadas'] == 1
+    assert kpis['alunos_ativos_count'] == 1 # Apenas 1 aluno em aulas futuras
+    assert kpis['professores_associados_count'] == 1
