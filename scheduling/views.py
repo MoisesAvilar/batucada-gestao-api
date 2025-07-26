@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions, status
+from django.utils import timezone
+from rest_framework import generics, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .filters import AulaFilter
@@ -127,3 +128,29 @@ class RelatorioAulaViewSet(viewsets.ModelViewSet):
         Define o professor que validou como o usuário logado no momento da criação.
         """
         serializer.save(professor_que_validou=self.request.user)
+
+
+class AulasParaSubstituirAPIView(generics.ListAPIView):
+    """
+    Endpoint que lista aulas futuras disponíveis para substituição.
+    Filtra aulas agendadas que não pertencem ao usuário logado.
+    """
+    serializer_class = AulaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_class = AulaFilter
+
+    def get_queryset(self):
+        """
+        Sobrescreve o queryset para aplicar a lógica de negócio de substituição.
+        """
+        user = self.request.user
+        now = timezone.now()
+
+        queryset = Aula.objects.filter(
+            data_hora__gte=now,
+            status='Agendada'
+        ).exclude(
+            professores=user
+        ).distinct().order_by('data_hora')
+
+        return queryset
