@@ -1,0 +1,9 @@
+# Ignora o arquivo com as variáveis de ambiente
+.env
+
+# Outras boas práticas de ignore para Django/Python
+__pycache__/
+*.pyc
+db.sqlite3
+/venv/
+/.venv/
