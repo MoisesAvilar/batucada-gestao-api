@@ -4,8 +4,13 @@ from rest_framework import permissions
 from django.db.models import Count, Q
 from django.db.models.functions import TruncMonth
 from datetime import datetime
+from django.http import HttpResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 from scheduling.models import Aula
+from scheduling.filters import AulaFilter
 from users.models import CustomUser
 from .serializers import AdminDashboardSerializer
 
@@ -73,3 +78,57 @@ class AdminDashboardAPIView(APIView):
         serializer = AdminDashboardSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data)
+
+
+class ExportAulasAPIView(APIView):
+    """
+    Endpoint para exportar uma lista filtrada de aulas para um arquivo Excel (.xlsx).
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, *args, **kwargs):
+        aulas_queryset = AulaFilter(request.query_params, queryset=Aula.objects.all()).qs
+        aulas_list = aulas_queryset.order_by("data_hora").select_related(
+            'modalidade', 'relatorio__professor_que_validou'
+        ).prefetch_related('alunos', 'professores')
+
+        workbook = Workbook()
+        ws = workbook.active
+        ws.title = "Relatorio de Aulas"
+
+        headers = [
+            "ID Aula", "Data e Hora", "Status", "Modalidade", "Alunos",
+            "Prof. Atribuído(s)", "Prof. que Realizou"
+        ]
+        ws.append(headers)
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+
+        for col_num, header_title in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        for aula in aulas_list:
+            alunos_str = ", ".join([al.nome_completo for al in aula.alunos.all()])
+            professores_str = ", ".join([p.username for p in aula.professores.all()])
+            relatorio = getattr(aula, "relatorio", None)
+            professor_realizou_str = relatorio.professor_que_validou.username if relatorio and relatorio.professor_que_validou else "N/A"
+
+            ws.append([
+                aula.id,
+                aula.data_hora,
+                aula.get_status_display(),
+                aula.modalidade.nome,
+                alunos_str,
+                professores_str,
+                professor_realizou_str,
+            ])
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="relatorio_de_aulas.xlsx"'
+        workbook.save(response)
+
+        return response
