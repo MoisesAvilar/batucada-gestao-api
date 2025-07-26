@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'django_extensions',
 
     'users.apps.UsersConfig',
+    'scheduling.apps.SchedulingConfig',
 ]
 
 MIDDLEWARE = [
