@@ -309,3 +309,45 @@ def test_modalidade_detail_endpoint_returns_kpis(client):
     assert kpis['total_realizadas'] == 1
     assert kpis['alunos_ativos_count'] == 1 # Apenas 1 aluno em aulas futuras
     assert kpis['professores_associados_count'] == 1
+
+
+
+@pytest.mark.django_db
+def test_aula_list_endpoint_can_be_filtered(client):
+    """
+    Testa a filtragem avançada no endpoint de listagem de Aulas.
+    """
+    # 1. ARRANGE
+    user = CustomUser.objects.create_user(username='testuser', password='password123')
+    token_url = reverse('users:token_obtain_pair')
+    token_response = client.post(token_url, {'username': 'testuser', 'password': 'password123'})
+    token = token_response.data['access']
+
+    prof1 = CustomUser.objects.create_user(username='prof1', tipo='professor')
+    modalidade1 = Modalidade.objects.create(nome="Modalidade A")
+    modalidade2 = Modalidade.objects.create(nome="Modalidade B")
+
+    # Cria um conjunto de aulas diferentes para testar os filtros
+    Aula.objects.create(modalidade=modalidade1, data_hora="2025-10-10T10:00:00Z", status="Agendada")
+    Aula.objects.create(modalidade=modalidade1, data_hora="2025-10-11T12:00:00Z", status="Realizada")
+    aula_cancelada = Aula.objects.create(modalidade=modalidade2, data_hora="2025-10-12T14:00:00Z", status="Cancelada")
+    aula_cancelada.professores.set([prof1])
+
+    url = reverse('aula-list')
+
+    # 2. ACT & ASSERT
+    # Teste 1: Filtrar por status 'Cancelada'
+    response = client.get(f"{url}?status=Cancelada", HTTP_AUTHORIZATION=f'Bearer {token}')
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data['results']) == 1
+    assert response.data['results'][0]['status'] == 'Cancelada'
+
+    # Teste 2: Filtrar por modalidade E professor
+    response = client.get(f"{url}?modalidade={modalidade2.id}&professores={prof1.id}", HTTP_AUTHORIZATION=f'Bearer {token}')
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data['results']) == 1
+    
+    # Teste 3: Filtrar por data inicial
+    response = client.get(f"{url}?data_inicial=2025-10-11", HTTP_AUTHORIZATION=f'Bearer {token}')
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data['results']) == 2 # Aulas do dia 11 e 12

@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from .filters import AulaFilter
 from .models import Modalidade, Aluno, Aula, PresencaAluno, PresencaProfessor, RelatorioAula
 from .serializers import ModalidadeSerializer, AlunoSerializer, AlunoDetailSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer, RelatorioAulaSerializer, ModalidadeDetailSerializer
 
@@ -39,6 +40,8 @@ class AulaViewSet(viewsets.ModelViewSet):
     queryset = Aula.objects.all().order_by('-data_hora')
     serializer_class = AulaSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    filterset_class = AulaFilter
 
     @action(detail=True, methods=['post'], url_path='marcar-presenca-alunos')
     def marcar_presenca_alunos(self, request, pk=None):
