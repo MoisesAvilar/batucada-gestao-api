@@ -211,3 +211,60 @@ def test_create_relatorio_with_nested_items(client):
     assert relatorio.itens_ritmo.count() == 1
     assert relatorio.itens_viradas.count() == 0
     assert relatorio.itens_rudimentos.first().descricao == "Toque Simples"
+
+
+@pytest.mark.django_db
+def test_aluno_detail_endpoint_returns_kpis(client):
+    """
+    Testa se o endpoint de detalhe do aluno retorna os KPIs calculados corretamente.
+    """
+    # 1. ARRANGE
+    user = CustomUser.objects.create_user(username='testuser', password='password123')
+    token_url = reverse('users:token_obtain_pair')
+    token_response = client.post(token_url, {'username': 'testuser', 'password': 'password123'})
+    token = token_response.data['access']
+    
+    aluno = Aluno.objects.create(nome_completo="Aluno KPI")
+    modalidade = Modalidade.objects.create(nome="Aula KPI")
+
+    # Cria um cenário de aulas e presenças
+    # Aula 1: Presente
+    aula1 = Aula.objects.create(modalidade=modalidade, data_hora="2025-01-01T10:00:00Z", status="Realizada")
+    aula1.alunos.set([aluno])
+    PresencaAluno.objects.create(aula=aula1, aluno=aluno, status='presente')
+
+    # Aula 2: Presente
+    aula2 = Aula.objects.create(modalidade=modalidade, data_hora="2025-01-02T10:00:00Z", status="Realizada")
+    aula2.alunos.set([aluno])
+    PresencaAluno.objects.create(aula=aula2, aluno=aluno, status='presente')
+
+    # Aula 3: Ausente
+    aula3 = Aula.objects.create(modalidade=modalidade, data_hora="2025-01-03T10:00:00Z", status="Aluno Ausente")
+    aula3.alunos.set([aluno])
+    PresencaAluno.objects.create(aula=aula3, aluno=aluno, status='ausente')
+    
+    # Aula 4: Cancelada (não conta para presença)
+    aula4 = Aula.objects.create(modalidade=modalidade, data_hora="2025-01-04T10:00:00Z", status="Cancelada")
+    aula4.alunos.set([aluno])
+    
+    # Aula 5: Agendada
+    aula5 = Aula.objects.create(modalidade=modalidade, data_hora="2025-01-05T10:00:00Z", status="Agendada")
+    aula5.alunos.set([aluno])
+    
+    # 2. ACT
+    url = reverse('aluno-detail', kwargs={'pk': aluno.pk})
+    response = client.get(url, HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    # 3. ASSERT
+    assert response.status_code == status.HTTP_200_OK
+    
+    # Verifica os KPIs
+    kpis = response.data['kpis']
+    assert kpis['total_aulas'] == 5
+    assert kpis['total_realizadas'] == 2 # Apenas as com status 'presente'
+    assert kpis['total_ausencias'] == 1
+    assert kpis['total_canceladas'] == 1
+    assert kpis['total_agendadas'] == 1
+    
+    # Verifica a taxa de presença (2 presentes de 3 aulas concluídas [2p + 1a])
+    assert response.data['taxa_presenca'] == 66.67 

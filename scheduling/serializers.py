@@ -12,6 +12,7 @@ from .models import (
     ItemVirada,
 )
 from users.models import CustomUser
+from django.db.models import Count, Q, Subquery, OuterRef
 
 
 class ModalidadeSerializer(serializers.ModelSerializer):
@@ -96,3 +97,58 @@ class RelatorioAulaSerializer(WritableNestedModelSerializer):
             'itens_rudimentos', 'itens_ritmo', 'itens_viradas'
         ]
         read_only_fields = ['professor_que_validou']
+
+
+class AlunoDetailSerializer(serializers.ModelSerializer):
+    """
+    Um serializer detalhado para um único aluno, que calcula e anexa
+    KPIs e outros dados agregados.
+    """
+    kpis = serializers.SerializerMethodField()
+    taxa_presenca = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Aluno
+        fields = [
+            'id', 'nome_completo', 'telefone', 'email', 'data_criacao',
+            'kpis', 'taxa_presenca'
+        ]
+
+    def _get_aulas_com_presenca_base_query(self, aluno):
+        """Método auxiliar para não repetir a query base."""
+        presenca_status_subquery = PresencaAluno.objects.filter(
+            aula=OuterRef('pk'),
+            aluno=aluno
+        ).values('status')[:1]
+
+        return Aula.objects.filter(alunos=aluno).annotate(
+            status_presenca_aluno=Subquery(presenca_status_subquery)
+        )
+
+    def get_kpis(self, aluno):
+        """Calcula os KPIs de aulas para o aluno."""
+        aulas_com_presenca = self._get_aulas_com_presenca_base_query(aluno)
+
+        total_realizadas = aulas_com_presenca.filter(status__in=['Realizada', 'Aluno Ausente'], status_presenca_aluno='presente').count()
+        total_ausencias = aulas_com_presenca.filter(status__in=['Realizada', 'Aluno Ausente'], status_presenca_aluno='ausente').count()
+        total_canceladas = aulas_com_presenca.filter(status="Cancelada").count()
+        total_agendadas = aulas_com_presenca.filter(status="Agendada").count()
+
+        return {
+            'total_aulas': aulas_com_presenca.count(),
+            'total_realizadas': total_realizadas,
+            'total_ausencias': total_ausencias,
+            'total_canceladas': total_canceladas,
+            'total_agendadas': total_agendadas,
+        }
+
+    def get_taxa_presenca(self, aluno):
+        """Calcula a taxa de presença do aluno."""
+        kpis = self.get_kpis(aluno)
+        aulas_contabilizadas = kpis['total_realizadas'] + kpis['total_ausencias']
+
+        if aulas_contabilizadas == 0:
+            return 0.0
+
+        taxa = (kpis['total_realizadas'] / aulas_contabilizadas) * 100
+        return round(taxa, 2)
