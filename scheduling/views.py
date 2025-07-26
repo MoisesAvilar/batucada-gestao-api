@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from .filters import AulaFilter
 from .models import Modalidade, Aluno, Aula, PresencaAluno, PresencaProfessor, RelatorioAula
 from .serializers import ModalidadeSerializer, AlunoSerializer, AlunoDetailSerializer, AulaSerializer, PresencaAlunoSerializer, PresencaProfessorSerializer, RelatorioAulaSerializer, ModalidadeDetailSerializer
+from reporting.services import gerar_relatorio_ia_para_aluno
 
 
 class ModalidadeViewSet(viewsets.ModelViewSet):
@@ -32,6 +33,27 @@ class AlunoViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return AlunoDetailSerializer
         return AlunoSerializer
+
+    @action(detail=True, methods=['post'], url_path='gerar-relatorio-ia')
+    def gerar_relatorio_ia(self, request, pk=None):
+        """
+        Ação para gerar um relatório de desempenho de aluno usando IA.
+        """
+        aluno = self.get_object()
+
+        try:
+            report_html = gerar_relatorio_ia_para_aluno(aluno)
+            if report_html is None:
+                return Response(
+                    {'error': 'Nenhum relatório de aula com presença encontrada para este aluno.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response({'report_html': report_html})
+        except Exception as e:
+            return Response(
+                {'error': f'Erro ao gerar relatório: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class AulaViewSet(viewsets.ModelViewSet):

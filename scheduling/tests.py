@@ -2,9 +2,10 @@ import json
 import pytest
 from rest_framework import status
 from django.urls import reverse
+from django.utils import timezone
 from users.models import CustomUser
 from .models import Aluno, Aula, Modalidade, PresencaAluno, PresencaProfessor, RelatorioAula, ItemRudimento
-
+from unittest.mock import patch
 
 @pytest.mark.django_db
 def test_create_modalidade(client):
@@ -211,3 +212,40 @@ def test_aulas_para_substituir_endpoint(client):
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data['results']) == 1
     assert response.data['results'][0]['professores'][0]['username'] == 'prof2'
+
+
+@pytest.mark.django_db
+# O @patch intercepta a chamada à API do Gemini e a substitui por um objeto simulado
+@patch('reporting.services.genai.GenerativeModel')
+def test_gerar_relatorio_ia_endpoint(mock_generative_model, client):
+    """
+    Testa o endpoint de geração de relatório com IA, simulando a API externa.
+    """
+    # 1. ARRANGE
+    # Configura o mock para se comportar como a API real
+    mock_model_instance = mock_generative_model.return_value
+    mock_model_instance.generate_content.return_value.text = "**Relatório Simulado**"
+    
+    # Cria dados de teste
+    user = CustomUser.objects.create_user(username='testuser', password='password123')
+    token_url = reverse('users:token_obtain_pair')
+    token_response = client.post(token_url, {'username': 'testuser', 'password': 'password123'})
+    token = token_response.data['access']
+    
+    aluno = Aluno.objects.create(nome_completo="Aluno IA")
+    modalidade = Modalidade.objects.create(nome="Aula IA")
+    aula = Aula.objects.create(modalidade=modalidade, data_hora=timezone.now(), status="Realizada")
+    aula.alunos.set([aluno])
+    PresencaAluno.objects.create(aula=aula, aluno=aluno, status='presente')
+    RelatorioAula.objects.create(aula=aula, conteudo_teorico="Teste")
+
+    # 2. ACT
+    url = reverse('scheduling:aluno-gerar-relatorio-ia', kwargs={'pk': aluno.pk})
+    response = client.post(url, HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    # 3. ASSERT
+    assert response.status_code == status.HTTP_200_OK
+    # Verifica se a API do Gemini foi chamada
+    mock_model_instance.generate_content.assert_called_once()
+    # Verifica se a resposta contém o HTML convertido do nosso texto simulado
+    assert "<strong>Relatório Simulado</strong>" in response.data['report_html']
